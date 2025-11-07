@@ -4,7 +4,7 @@ default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 app:
   envs:
     # подставь под свой проект
-    - PROJECT_PATH: "Guru Barbecue.xcworkspace"   # или "Guru Barbecue.xcodeproj"
+    - PROJECT_PATH: "Guru Barbecue.xcodeproj"   # или "Guru Barbecue.xcodeproj"
     - SCHEME: "Guru Barbecue"
     - EXPORT_METHOD: "app-store"                   # для TestFlight всегда app-store
     # опционально:
