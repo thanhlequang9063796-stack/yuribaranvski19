@@ -39,14 +39,14 @@ workflows:
       # 4) Загрузка IPA в App Store Connect (TestFlight) через API key
       - deploy-to-itunesconnect-deliver@2:
           inputs:
-            - use_apple_service_connection: "no"                # <<< выключаем Apple Service connection
+            - connection: "off"                # <<< выключаем Apple Service connection
             - ipa_path: "$BITRISE_IPA_PATH"
             - platform: "ios"
             - app_identifier: "com.baranovua.ybsignature"
-            # --- App Store Connect API key (все 3 переменные должны быть в Secrets) ---
-            - api_issuer: "$APP_STORE_CONNECT_ISSUER_ID"       # у тебя уже есть
-            - api_key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"         # ДОБАВЬ в Secrets
-            - api_key: "$APP_STORE_CONNECT_PRIVATE_KEY"               # полное содержимое .p8 в Secrets
+             # App Store Connect API key (из Secrets)
+            - api_issuer: "$APP_STORE_CONNECT_ISSUER_ID"         # Issuer ID
+            - api_key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"    # Key ID
+            - api_key: "$APP_STORE_CONNECT_PRIVATE_KEY"          # Полное содержимое .p8
             # --- Опции загрузки ---
             - skip_metadata: "yes"
             - skip_screenshots: "yes"
