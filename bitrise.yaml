@@ -3,75 +3,64 @@ default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 
 app:
   envs:
-    # подставь под свой проект
-    - PROJECT_PATH: "Guru Barbecue.xcodeproj"   # или "Guru Barbecue.xcodeproj"
+    - PROJECT_PATH: "Guru Barbecue.xcodeproj"
     - SCHEME: "Guru Barbecue"
-    - EXPORT_METHOD: "app-store"                   # для TestFlight всегда app-store
-    # опционально:
-    # - MARKETING_VERSION: "1.0.3"                 # если хочешь менять маркетинговую версию
-    # - BUILD_NUMBER: ""                           # если пусто — возьмём timestamp
+    - EXPORT_METHOD: "app-store"
+    - TEAM_ID: "436YU6KQQ2"
+    - BUNDLE_ID: "com.baranovua.ybsignature"
+    # Имя профиля как в Bitrise/Xcode (если не уверен — подставь UUID)
+    - PROFILE_SPECIFIER: "YB Signature Grill No Results"
 
 workflows:
   deliver_testflight:
     meta:
       bitrise.io:
-        stack: osx-xcode-16.4.x                    # можно оставить дефолт стека
+        stack: osx-xcode-16.4.x
     steps:
       - git-clone@8: {}
-      - cache-pull@2: {}
-
-      # Ставит .p12 и .mobileprovision из Code Signing
       - certificate-and-profile-installer@1: {}
 
-      # (опционально) авто-номер билда/версия
-      - set-xcode-project-build-number@1:
-          inputs:
-            - build_number: "$BUILD_NUMBER"
-            - use_timestamp: "yes"                 # если BUILD_NUMBER пуст
-      # - set-xcode-project-version@1:
-      #     inputs:
-      #       - version: "$MARKETING_VERSION"
-
-      # Архив + экспорт IPA (без авто-сайнинга, профили уже установлены)
       - xcode-archive@5:
           inputs:
             - project_path: "$PROJECT_PATH"
             - scheme: "$SCHEME"
             - configuration: "Release"
-            - distribution_method: "$EXPORT_METHOD"    # app-store
-            - automatic_code_signing: "off"
-            - compile_bitcode: "false"                 # биткод не нужен
+            - distribution_method: "$EXPORT_METHOD"          # app-store
+            - automatic_code_signing: "off"                  # ручной сайнинг
+            - compile_bitcode: "false"
             - upload_bitcode: "false"
-            - xcodebuild_options: "-destination 'generic/platform=iOS'"  # избегаем симуляторов
-            - log_formatter: "xcpretty"
+            # Жёстко задаём сайнинг: команда одной строкой
+            - xcodebuild_options: >-
+                -destination 'generic/platform=iOS'
+                DEVELOPMENT_TEAM=$TEAM_ID
+                CODE_SIGN_STYLE=Manual
+                CODE_SIGN_IDENTITY="Apple Distribution"
+                PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"
+            # На случай нескольких таргетов/рассинхрона — дублируем через exportOptions
+            - export_options_plist_content: |-
+                <?xml version="1.0" encoding="UTF-8"?>
+                <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                <plist version="1.0">
+                <dict>
+                  <key>method</key><string>app-store</string>
+                  <key>teamID</key><string>${TEAM_ID}</string>
+                  <key>signingStyle</key><string>manual</string>
+                  <key>provisioningProfiles</key>
+                  <dict>
+                    <key>${BUNDLE_ID}</key><string>${PROFILE_SPECIFIER}</string>
+                  </dict>
+                  <key>stripSwiftSymbols</key><true/>
+                  <key>destination</key><string>export</string>
+                </dict>
+                </plist>
 
-      # Сохраняем артефакты (ipa, dSYM, xcarchive)
-      - deploy-to-bitrise-io@2: {}
-
-      # Загрузка в App Store Connect и публикация в TestFlight
       - app-store-connect-upload@1:
           inputs:
             - issuer_id: "$APP_STORE_CONNECT_ISSUER_ID"
             - key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"
-            - private_key: "$APP_STORE_CONNECT_PRIVATE_KEY"   # содержимое .p8
+            - private_key: "$APP_STORE_CONNECT_PRIVATE_KEY"
             - submit_to_testflight: "yes"
             - skip_wait_for_build_processing: "yes"
             - verbose_log: "yes"
 
-      - cache-push@2: {}
-
-  # Опционально: отдельный workflow только для локального прогона unit/ui-тестов
-  run_tests:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-16.4.x
-    steps:
-      - git-clone@8: {}
-      - xcode-test@6:
-          inputs:
-            - project_path: "$PROJECT_PATH"
-            - scheme: "$SCHEME"
-            - simulator_device: "iPhone 16"
-            - simulator_os_version: "18.6"
-            - simulator_platform: "iOS"
       - deploy-to-bitrise-io@2: {}
