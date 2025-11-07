@@ -44,7 +44,7 @@ workflows:
             - platform: "ios"
             - app_identifier: "com.baranovua.ybsignature"
             # --- App Store Connect API key (все 3 переменные должны быть в Secrets) ---
-            - api_key_issuer_id: "$APP_STORE_CONNECT_ISSUER_ID"       # у тебя уже есть
+            - api_issuer: "$APP_STORE_CONNECT_ISSUER_ID"       # у тебя уже есть
             - api_key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"         # ДОБАВЬ в Secrets
             - api_key: "$APP_STORE_CONNECT_PRIVATE_KEY"               # полное содержимое .p8 в Secrets
             # --- Опции загрузки ---
