@@ -3,9 +3,9 @@ default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 
 app:
   envs:
-  - PROJECT_PATH: "OakLedger.xcworkspace"   # или OakLedger.xcodeproj
-  - SCHEME: "OakLedger"
-  - BUNDLE_ID: "com.onalpocan.oakledger.ios"
+  - PROJECT_PATH: "Guru Barbecue.xcworkspace"   # или OakLedger.xcodeproj
+  - SCHEME: "Guru Barbecue"
+  - BUNDLE_ID: "com.baranovua.ybsignature"
   - EXPORT_METHOD: "app-store"              # для TestFlight
   # Опционально:
   # - MARKETING_VERSION: "1.1"
