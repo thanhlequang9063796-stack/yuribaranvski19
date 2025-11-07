@@ -1,66 +1,57 @@
 format_version: "11"
-default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+default_step_lib_source: "https://github.com/bitrise-io/bitrise-steplib.git"
 
 app:
   envs:
+    # === Твои константы проекта ===
     - PROJECT_PATH: "Guru Barbecue.xcodeproj"
     - SCHEME: "Guru Barbecue"
     - EXPORT_METHOD: "app-store"
-    - TEAM_ID: "436YU6KQQ2"
-    - BUNDLE_ID: "com.baranovua.ybsignature"
-    # Имя профиля как в Bitrise/Xcode (если не уверен — подставь UUID)
-    - PROFILE_SPECIFIER: "YB Signature Grill No Results"
 
 workflows:
-  deliver_testflight:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-16.4.x
+  archive_and_export_app:
     steps:
+      # 1) Клонируем
       - git-clone@8: {}
+
+      # 2) Ставим сертификат и профайл (из Code signing)
       - certificate-and-profile-installer@1: {}
 
+      # 3) Архив + экспорт IPA (ручной сайнинг)
       - xcode-archive@5:
           inputs:
             - project_path: "$PROJECT_PATH"
             - scheme: "$SCHEME"
             - configuration: "Release"
-            - distribution_method: "$EXPORT_METHOD"          # app-store
-            - automatic_code_signing: "off"                  # ручной сайнинг
+            - distribution_method: "$EXPORT_METHOD"        # app-store
+            - automatic_code_signing: "off"
             - compile_bitcode: "false"
             - upload_bitcode: "false"
-            # Жёстко задаём сайнинг: команда одной строкой
-            - xcodebuild_options: >-
+            # ВАЖНО: флаги ручного сайнинга, подставь свой UUID профиля, TeamID уже указан
+            - xcodebuild_options: >
                 -destination 'generic/platform=iOS'
-                DEVELOPMENT_TEAM=$TEAM_ID
+                DEVELOPMENT_TEAM=436YU6KQQ2
                 CODE_SIGN_STYLE=Manual
                 CODE_SIGN_IDENTITY="Apple Distribution"
-                PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"
-            # На случай нескольких таргетов/рассинхрона — дублируем через exportOptions
-            - export_options_plist_content: |-
-                <?xml version="1.0" encoding="UTF-8"?>
-                <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-                <plist version="1.0">
-                <dict>
-                  <key>method</key><string>app-store</string>
-                  <key>teamID</key><string>${TEAM_ID}</string>
-                  <key>signingStyle</key><string>manual</string>
-                  <key>provisioningProfiles</key>
-                  <dict>
-                    <key>${BUNDLE_ID}</key><string>${PROFILE_SPECIFIER}</string>
-                  </dict>
-                  <key>stripSwiftSymbols</key><true/>
-                  <key>destination</key><string>export</string>
-                </dict>
-                </plist>
+                PROVISIONING_PROFILE_SPECIFIER="7e8a0c24-f6b3-48fd-bbc8-f109dd20ef13"
+            - log_formatter: "xcpretty"
 
-      - app-store-connect-upload@1:
+      # 4) Загрузка IPA в App Store Connect (TestFlight) через API key
+      - deploy-to-itunesconnect-deliver@2:
           inputs:
-            - issuer_id: "$APP_STORE_CONNECT_ISSUER_ID"
-            - key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"
-            - private_key: "$APP_STORE_CONNECT_PRIVATE_KEY"
-            - submit_to_testflight: "yes"
-            - skip_wait_for_build_processing: "yes"
-            - verbose_log: "yes"
+            - use_apple_service_connection: "no"                # <<< выключаем Apple Service connection
+            - ipa_path: "$BITRISE_IPA_PATH"
+            - platform: "ios"
+            - app_identifier: "com.baranovua.ybsignature"
+            # --- App Store Connect API key (все 3 переменные должны быть в Secrets) ---
+            - api_key_issuer_id: "$APP_STORE_CONNECT_ISSUER_ID"       # у тебя уже есть
+            - api_key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"         # ДОБАВЬ в Secrets
+            - api_key: "$APP_STORE_CONNECT_PRIVATE_KEY"               # полное содержимое .p8 в Secrets
+            # --- Опции загрузки ---
+            - skip_metadata: "yes"
+            - skip_screenshots: "yes"
+            - submit_beta_app_review: "yes"                           # отправить в TestFlight
+            - skip_waiting_for_build_processing: "yes"
 
+      # 5) Публикуем артефакты в Bitrise
       - deploy-to-bitrise-io@2: {}
