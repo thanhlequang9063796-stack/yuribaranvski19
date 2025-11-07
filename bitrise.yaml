@@ -1,94 +1,70 @@
----
-format_version: '23'
+format_version: '11'
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
-project_type: ios
+
 app:
   envs:
-  - TEST_SHARD_COUNT: 2
-  - BITRISE_PROJECT_PATH: Guru Barbecue.xcodeproj
-    opts:
-      is_expand: false
-  - BITRISE_SCHEME: Guru Barbecue
-    opts:
-      is_expand: false
-  - BITRISE_DISTRIBUTION_METHOD: ad-hoc
-    opts:
-      is_expand: false
-pipelines:
-  run_tests:
-    workflows:
-      build_for_testing: {}
-      test_without_building:
-        depends_on:
-        - build_for_testing
-        parallel: "$TEST_SHARD_COUNT"
+  - PROJECT_PATH: "OakLedger.xcworkspace"   # или OakLedger.xcodeproj
+  - SCHEME: "OakLedger"
+  - BUNDLE_ID: "com.onalpocan.oakledger.ios"
+  - EXPORT_METHOD: "app-store"              # для TestFlight
+  # Опционально:
+  # - MARKETING_VERSION: "1.1"
+  # - BUILD_NUMBER: ""                       # если пусто — возьмём timestamp
+
 workflows:
-  archive_and_export_app:
-    summary: Run your Xcode tests and create an IPA file to install your app on a
-      device or share it with your team.
-    description: The workflow will first clone your Git repository, cache and install
-      your project's dependencies if any, run your Xcode tests, export an IPA file
-      from the project and save it.
+  ios_testflight:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.4.x
     steps:
     - git-clone@8: {}
-    - xcode-test@6:
+    - cache-pull@2: {}
+
+    # Ставит .p12 и .mobileprovision из Code Signing
+    - certificate-and-profile-installer@1: {}
+
+    # (опционально) обновим номер билда и/или маркетинговую версию
+    - set-xcode-project-build-number@1:
         inputs:
-        - project_path: "$BITRISE_PROJECT_PATH"
-        - scheme: "$BITRISE_SCHEME"
-        - test_repetition_mode: retry_on_failure
-        - cache_level: none
+        - build_number: "$BUILD_NUMBER"
+        - build_version_offset: "0"
+        - use_timestamp: "yes"              # если BUILD_NUMBER не задан
+    # - set-xcode-project-version@1:
+    #     inputs:
+    #     - version: "$MARKETING_VERSION"
+
+    # Архивируем и экспортируем IPA
     - xcode-archive@5:
         inputs:
-        - project_path: "$BITRISE_PROJECT_PATH"
-        - scheme: "$BITRISE_SCHEME"
-        - distribution_method: "$BITRISE_DISTRIBUTION_METHOD"
-        - automatic_code_signing: api-key
-        - cache_level: none
-    - deploy-to-bitrise-io@2: {}
-  build_for_testing:
-    steps:
-    - git-clone@8: {}
-    - xcode-build-for-test@3:
+        - project_path: "$PROJECT_PATH"
+        - scheme: "$SCHEME"
+        - configuration: "Release"
+        - distribution_method: "$EXPORT_METHOD"   # app-store
+        - automatic_code_signing: "off"           # ручной сайнинг, профили уже установлены
+        - compile_bitcode: "no"
+        - team_id: ""                             # можно оставить пустым — возьмётся из профиля
+        # Если нужно строго зафиксировать профиль:
+        # - export_options_plist_content: |-
+        #     <?xml version="1.0" encoding="UTF-8"?>
+        #     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        #     <plist version="1.0"><dict>
+        #       <key>method</key><string>app-store</string>
+        #       <key>signingStyle</key><string>manual</string>
+        #       <key>provisioningProfiles</key><dict>
+        #         <key>com.onalpocan.oakledger.ios</key><string>YOUR_PROFILE_NAME_OR_UUID</string>
+        #       </dict>
+        #     </dict></plist>
+
+    - deploy-to-bitrise-io@2: {}   # артефакты (ipa, dSYM, xcarchive)
+
+    # Загрузка в App Store Connect и публикация в TestFlight
+    - app-store-connect-upload@1:
         inputs:
-        - project_path: "$BITRISE_PROJECT_PATH"
-        - scheme: "$BITRISE_SCHEME"
-        - destination: generic/platform=iOS Simulator
-        - cache_level: none
-    - xcode-test-shard-calculation@0:
-        inputs:
-        - shard_count: "$TEST_SHARD_COUNT"
-        - product_path: "$BITRISE_XCTESTRUN_FILE_PATH"
-    - deploy-to-bitrise-io@2:
-        inputs:
-        - pipeline_intermediate_files: |-
-            BITRISE_TEST_SHARDS_PATH
-            BITRISE_TEST_BUNDLE_PATH
-  run_tests:
-    summary: Run your Xcode tests and get the test report.
-    description: The workflow will first clone your Git repository, cache and install
-      your project's dependencies if any, run your Xcode tests and save the test results.
-    steps:
-    - git-clone@8: {}
-    - xcode-test@6:
-        inputs:
-        - project_path: "$BITRISE_PROJECT_PATH"
-        - scheme: "$BITRISE_SCHEME"
-        - test_repetition_mode: retry_on_failure
-        - cache_level: none
-    - deploy-to-bitrise-io@2: {}
-    triggers:
-      push:
-      - branch: main
-      pull_request:
-      - source_branch: "*"
-  test_without_building:
-    steps:
-    - pull-intermediate-files@1: {}
-    - xcode-test-without-building@0:
-        inputs:
-        - only_testing: "$BITRISE_TEST_SHARDS_PATH/$BITRISE_IO_PARALLEL_INDEX"
-        - xctestrun: "$BITRISE_TEST_BUNDLE_PATH/all_tests.xctestrun"
-meta:
-  bitrise.io:
-    stack: osx-xcode-16.4.x
-    machine_type_id: g2.mac.large
+        - issuer_id: "$APP_STORE_CONNECT_ISSUER_ID"       # Secrets
+        - key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"
+        - private_key: "$APP_STORE_CONNECT_PRIVATE_KEY"   # само содержание ключа (.p8)
+        - submit_to_testflight: "yes"
+        - skip_wait_for_build_processing: "yes"
+        - verbose_log: "yes"
+
+    - cache-push@2: {}
