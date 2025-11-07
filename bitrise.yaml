@@ -1,57 +1,57 @@
-format_version: "11"
-default_step_lib_source: "https://github.com/bitrise-io/bitrise-steplib.git"
-
-app:
-  envs:
-    # === Твои константы проекта ===
-    - PROJECT_PATH: "Guru Barbecue.xcodeproj"
-    - SCHEME: "Guru Barbecue"
-    - EXPORT_METHOD: "app-store"
-
 workflows:
   archive_and_export_app:
     steps:
-      # 1) Клонируем
       - git-clone@8: {}
-
-      # 2) Ставим сертификат и профайл (из Code signing)
       - certificate-and-profile-installer@1: {}
-
-      # 3) Архив + экспорт IPA (ручной сайнинг)
       - xcode-archive@5:
           inputs:
-            - project_path: "$PROJECT_PATH"
-            - scheme: "$SCHEME"
-            - configuration: "Release"
-            - distribution_method: "$EXPORT_METHOD"        # app-store
+            - project_path: "Guru Barbecue.xcodeproj"
+            - scheme: "Guru Barbecue"
+            - distribution_method: "app-store"
             - automatic_code_signing: "off"
             - compile_bitcode: "false"
             - upload_bitcode: "false"
-            # ВАЖНО: флаги ручного сайнинга, подставь свой UUID профиля, TeamID уже указан
-            - xcodebuild_options: >
+            - xcodebuild_options: >-
                 -destination 'generic/platform=iOS'
                 DEVELOPMENT_TEAM=436YU6KQQ2
                 CODE_SIGN_STYLE=Manual
                 CODE_SIGN_IDENTITY="Apple Distribution"
                 PROVISIONING_PROFILE_SPECIFIER="7e8a0c24-f6b3-48fd-bbc8-f109dd20ef13"
-            - log_formatter: "xcpretty"
 
-      # 4) Загрузка IPA в App Store Connect (TestFlight) через API key
+      # ⬇️ создаём файл ключа и экспортим путь в env
+      - script@1:
+          title: "Write ASC API key to file"
+          inputs:
+            - content: |-
+                set -euo pipefail
+                : "${APP_STORE_CONNECT_PRIVATE_KEY:?Missing APP_STORE_CONNECT_PRIVATE_KEY}"
+                : "${APP_STORE_CONNECT_KEY_IDENTIFIER:?Missing APP_STORE_CONNECT_KEY_IDENTIFIER}"
+                : "${APP_STORE_CONNECT_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
+
+                mkdir -p "$BITRISE_SOURCE_DIR/.asc"
+                KEY_PATH="$BITRISE_SOURCE_DIR/.asc/asc_api_key.p8"
+                printf "%s\n" "$APP_STORE_CONNECT_PRIVATE_KEY" > "$KEY_PATH"
+                # на всякий случай проверим, что в файле есть заголовки
+                grep -q "BEGIN PRIVATE KEY" "$KEY_PATH" || { echo "❌ BAD .p8 content"; exit 1; }
+
+                echo "ASC_API_KEY_PATH=$KEY_PATH" >> "$BITRISE_ENV_FILE"
+                echo "✅ Wrote API key to $KEY_PATH"
+
+      # ⬇️ грузим через deliver, указывая api_key_path
       - deploy-to-itunesconnect-deliver@2:
           inputs:
-            - connection: "off"                # <<< выключаем Apple Service connection
+            - connection: "off"                      # форсим off, чтобы брать из inputs
             - ipa_path: "$BITRISE_IPA_PATH"
             - platform: "ios"
             - app_identifier: "com.baranovua.ybsignature"
-             # App Store Connect API key (из Secrets)
-            - api_issuer: "$APP_STORE_CONNECT_ISSUER_ID"         # Issuer ID
-            - api_key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"    # Key ID
-            - api_key: "$APP_STORE_CONNECT_PRIVATE_KEY"          # Полное содержимое .p8
-            # --- Опции загрузки ---
+            # авторизация по API-ключу из файла
+            - api_key_path: "$ASC_API_KEY_PATH"
+            - api_issuer: "$APP_STORE_CONNECT_ISSUER_ID"
+            - api_key_id: "$APP_STORE_CONNECT_KEY_IDENTIFIER"
+            # дополнительные флаги
             - skip_metadata: "yes"
             - skip_screenshots: "yes"
-            - submit_beta_app_review: "yes"                           # отправить в TestFlight
+            - submit_beta_app_review: "yes"
             - skip_waiting_for_build_processing: "yes"
 
-      # 5) Публикуем артефакты в Bitrise
       - deploy-to-bitrise-io@2: {}
